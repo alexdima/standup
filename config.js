@@ -29,12 +29,6 @@ exports.users = [
 	{ "name": "Aiday", githubId: '61460952' },
 	{ "name": "Nick", githubId: '1908215' },
 	{ "name": "Lee", githubId: '25487940' },
-//	{ "name": "Osvaldo", githubId: '' },
-//	{ "name": "Josh", githubId: '' },
 	{ "name": "Federico", githubId: '75954805' },
 	{ "name": "Giuseppe", githubId: '39117631' },
-//	{ "name": "Cedric", githubId: '225879889' },
-//	{ "name": "Hawk", githubId: '39639992' },
-//	{ "name": "Dmitriy", githubId: '9581278' },
-//	{ "name": "Kai", githubId: '4674940' },
 ];
