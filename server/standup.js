@@ -42,7 +42,12 @@ function reset(c) {
 
 	// Boss is always first
 	order.unshift({
-		name: 'Endgame & Team Leads'
+		name: 'Team Leads'
+	});
+
+	// Endgame at the end
+	order.push({
+		name: 'Endgame'
 	});
 
 	return db.setStage(-1, order, c);
@@ -65,6 +70,8 @@ exports.start = function (callback) {
 
 			// Team lead slot
 			var teamLeadSlot = stage.order.splice(0, 1)[0];
+			// Endgame slot
+			var endgameSlot = stage.order.pop();
 
 			// Discussion Slot
 			var discussionSlot = [];
@@ -92,6 +99,7 @@ exports.start = function (callback) {
 			statusSlot.forEach(function (element) {
 				stage.order.push(element);
 			});
+			stage.order.push(endgameSlot);
 
 			var presenter = stage.order[0];
 			presenter.startTime = new Date().getTime();
