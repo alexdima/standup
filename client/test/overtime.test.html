@@ -1,0 +1,108 @@
+<!doctype html>
+<html lang="en">
+<head>
+	<meta charset="utf-8">
+	<title>Overtime pulse tests</title>
+</head>
+<body>
+	<output id="result">Running overtime pulse tests...</output>
+	<script>
+		var fixture = document.createElement('iframe');
+		fixture.style.cssText = 'position: fixed; left: -10000px; width: 720px; height: 200px; border: 0';
+		fixture.srcdoc = '<!doctype html><link rel="stylesheet" href="../style.css">' +
+			'<main class="panel floating-surface"><div id="stage"><div id="speaker" class="list-row">' +
+			'<h4>Speaker</h4><span class="stats"><span class="badge">03:01</span></span>' +
+			'</div></div></main>';
+
+		window.overtimeTests = new Promise(function (resolve, reject) {
+			fixture.onload = function () {
+				try {
+					var doc = fixture.contentDocument;
+					var win = fixture.contentWindow;
+					if (!doc.querySelector('link').sheet) {
+						throw new Error('Failed to load the application stylesheet');
+					}
+
+					var row = doc.getElementById('speaker');
+					var forcedColors = win.matchMedia('(forced-colors: active)').matches;
+					var motionEnabled = win.matchMedia('(prefers-reduced-motion: no-preference)').matches && !forcedColors;
+					function pulses() {
+						return row.getAnimations().filter(function (animation) {
+							return animation instanceof win.CSSAnimation && animation.animationName === 'overtime-pulse';
+						});
+					}
+					var themes = ['dark', 'light'];
+					themes.forEach(function (theme) {
+						doc.documentElement.setAttribute('data-theme', theme);
+						row.className = 'list-row over-time';
+						if (pulses().length) {
+							throw new Error(theme + ': inactive speakers must not pulse');
+						}
+						row.className = 'list-row active';
+						if (pulses().length) {
+							throw new Error(theme + ': on-time speakers must not pulse');
+						}
+						var activeBackground = win.getComputedStyle(row).backgroundColor;
+						row.className = 'list-row active over-time';
+						var animations = pulses();
+						if (animations.length !== (motionEnabled ? 1 : 0)) {
+							throw new Error(theme + ': pulse must respect reduced motion and forced colors');
+						}
+
+						if (motionEnabled) {
+							var animation = animations[0];
+							var timing = animation.effect.getTiming();
+							if (timing.iterations !== Infinity || typeof timing.duration !== 'number' || timing.duration <= 0) {
+								throw new Error(theme + ': pulse must repeat continuously');
+							}
+							animation.pause();
+							animation.currentTime = 0;
+							var background = win.getComputedStyle(row).backgroundColor;
+							var foreground = win.getComputedStyle(row).color;
+							var indicator = win.getComputedStyle(row, '::before').backgroundColor;
+							var bounds = JSON.stringify(row.getBoundingClientRect().toJSON());
+							animation.currentTime = timing.duration / 2;
+							if (win.getComputedStyle(row).backgroundColor === background) {
+								throw new Error(theme + ': background must visibly pulse');
+							}
+							if (win.getComputedStyle(row).color !== foreground ||
+								win.getComputedStyle(row, '::before').backgroundColor !== indicator ||
+								JSON.stringify(row.getBoundingClientRect().toJSON()) !== bounds) {
+								throw new Error(theme + ': pulse must keep text, indicator, and layout steady');
+							}
+							animation.currentTime = timing.duration;
+							if (win.getComputedStyle(row).backgroundColor !== background) {
+								throw new Error(theme + ': pulse must return smoothly to its starting color');
+							}
+						} else if (!forcedColors && win.getComputedStyle(row).backgroundColor === activeBackground) {
+							throw new Error(theme + ': overtime must retain a static warning highlight');
+						}
+
+						row.className = 'list-row active';
+						if (pulses().length || win.getComputedStyle(row).backgroundColor !== activeBackground) {
+							throw new Error(theme + ': pulse must stop when the speaker is no longer overtime');
+						}
+					});
+					resolve(themes.length);
+				} catch (error) {
+					reject(error);
+				} finally {
+					fixture.remove();
+				}
+			};
+			fixture.onerror = function () {
+				fixture.remove();
+				reject(new Error('Failed to load the overtime fixture'));
+			};
+			document.body.appendChild(fixture);
+		});
+
+		window.overtimeTests.then(function (count) {
+			document.getElementById('result').textContent = count + ' overtime pulse tests passed.';
+		}, function (error) {
+			document.getElementById('result').textContent = 'Overtime pulse tests failed: ' + error.message;
+			console.error(error);
+		});
+	</script>
+</body>
+</html>

@@ -2740,4 +2740,3 @@ declare module "jquery" {
 }
 declare var jQuery: JQueryStatic;
 declare var $: JQueryStatic;
-declare var confetti: any;

@@ -19,7 +19,7 @@ exports.clone = function (obj) {
 	var result = (Array.isArray(obj)) ? [] : {};
 	Object.keys(obj).forEach(function (key) {
 		if (obj[key] && typeof obj[key] === 'object') {
-			result[key] = exports.shuffleArray(obj[key]);
+			result[key] = exports.clone(obj[key]);
 		} else {
 			result[key] = obj[key];
 		}

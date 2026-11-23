@@ -1,0 +1,82 @@
+<!doctype html>
+<html lang="en">
+<head>
+	<meta charset="utf-8">
+	<title>Hover transition tests</title>
+	<link rel="stylesheet" href="../style.css">
+</head>
+<body>
+	<output id="result">Running hover transition tests...</output>
+	<main class="panel floating-surface">
+		<div id="stage"><div id="row" class="list-row"><h4>Speaker</h4></div></div>
+	</main>
+	<script>
+		window.hoverTests = (async function () {
+			var row = document.getElementById('row');
+			var motionEnabled = matchMedia('(prefers-reduced-motion: no-preference)').matches &&
+				!matchMedia('(forced-colors: active)').matches;
+			function frame() {
+				return new Promise(function (resolve) { requestAnimationFrame(resolve); });
+			}
+			function transitions() {
+				return row.getAnimations().filter(function (animation) {
+					return animation instanceof CSSTransition && animation.transitionProperty === 'background-color';
+				});
+			}
+
+			for (var theme of ['dark', 'light']) {
+				document.documentElement.setAttribute('data-theme', theme);
+				row.className = 'list-row';
+				row.style.removeProperty('background-color');
+				getComputedStyle(row).backgroundColor;
+				await frame();
+				row.style.backgroundColor = getComputedStyle(document.documentElement).getPropertyValue('--vscode-list-hoverBackground');
+				await frame();
+				await frame();
+				var entering = transitions();
+				if (entering.length !== (motionEnabled ? 1 : 0)) {
+					throw new Error(theme + ': hover must respect motion and forced-colors preferences');
+				}
+				if (motionEnabled) {
+					var animation = entering[0];
+					var duration = animation.effect.getTiming().duration;
+					if (typeof duration !== 'number' || duration <= 0) {
+						throw new Error(theme + ': hover transition must have a positive duration');
+					}
+					animation.pause();
+					animation.currentTime = 0;
+					var start = getComputedStyle(row).backgroundColor;
+					animation.currentTime = duration / 2;
+					var middle = getComputedStyle(row).backgroundColor;
+					animation.currentTime = duration;
+					var end = getComputedStyle(row).backgroundColor;
+					if (start === middle || middle === end) {
+						throw new Error(theme + ': hover background must change smoothly');
+					}
+					animation.finish();
+				}
+				row.style.removeProperty('background-color');
+				await frame();
+				await frame();
+				var leaving = transitions();
+				if (leaving.length !== (motionEnabled ? 1 : 0)) {
+					throw new Error(theme + ': hover must also transition when leaving');
+				}
+				row.className = 'list-row active over-time';
+				await frame();
+				if (transitions().length) {
+					throw new Error(theme + ': active overtime rows must not retain hover transitions');
+				}
+			}
+			return 2;
+		})();
+
+		window.hoverTests.then(function (count) {
+			document.getElementById('result').textContent = count + ' hover transition themes passed.';
+		}, function (error) {
+			document.getElementById('result').textContent = 'Hover transition tests failed: ' + error.message;
+			console.error(error);
+		});
+	</script>
+</body>
+</html>

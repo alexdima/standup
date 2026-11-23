@@ -1,0 +1,207 @@
+<!doctype html>
+<html lang="en">
+<head>
+	<meta charset="utf-8">
+	<title>Speaker selection tests</title>
+	<link rel="stylesheet" href="../lib/codicons/codicon.css">
+	<link rel="stylesheet" href="../style.css">
+</head>
+<body>
+	<output id="result">Running speaker selection tests...</output>
+	<main class="panel floating-surface">
+		<div class="toolbar">
+			<button id="start" type="button">Start</button>
+			<button id="previous" type="button">Previous</button>
+			<button id="next" type="button">Next</button>
+			<button id="stop" type="button">Stop</button>
+			<span class="blobby"><img id="blobby" src="../blobby/setup.png" width="28" height="28" alt=""></span>
+		</div>
+		<div id="stage" role="list" aria-label="Speakers"></div>
+	</main>
+	<script src="../lib/jquery/jquery-1.11.0.min.js"></script>
+	<script>
+		var socketHandlers = {};
+		var emitted = [];
+		var socket = {
+			on: function (event, handler) { socketHandlers[event] = handler; },
+			emit: function (event, value) { emitted.push({ event: event, value: value }); }
+		};
+		window.define = function (dependencies, factory) {
+			factory({ connect: function () { return socket; } });
+		};
+	</script>
+	<script src="../main.js"></script>
+	<script>
+		(function () {
+			function assert(condition, message) {
+				if (!condition) {
+					throw new Error(message);
+				}
+			}
+
+			function reset(current) {
+				var now = Date.now();
+				var stage = {
+					current: current,
+					order: [
+						{ name: 'Team Leads', startTime: now - 10000 },
+						{ name: 'Speaker', discussionSlot: true, startTime: now - 6000, stopTime: now - 2000 },
+						{ name: 'Status Only' },
+						{ name: 'Endgame' }
+					]
+				};
+				emitted.length = 0;
+				socketHandlers.sync({
+					stage: stage,
+					stats: { Speaker: { standupCount: 1, speakTime: 5000 } },
+					time: now
+				});
+				var avatar = document.createElement('img');
+				avatar.className = 'avatar';
+				avatar.alt = '';
+				document.querySelectorAll('#stage h4')[1].prepend(avatar);
+				return stage;
+			}
+
+			function at(element, x) {
+				var rect = element.getBoundingClientRect();
+				var target = document.elementFromPoint(rect.left + rect.width * x, rect.top + rect.height / 2);
+				assert(target && element.contains(target), 'The target must be visible inside its row');
+				return target;
+			}
+
+			window.selectionFixture = { reset: reset, emitted: emitted };
+			window.speakerSelectionTests = Promise.resolve().then(async function () {
+				var response = await fetch('/');
+				assert(response.ok, 'The application page must be available');
+				var app = new DOMParser().parseFromString(await response.text(), 'text/html');
+				var iconLink = app.querySelector('link[href*="codicon"]');
+				assert(iconLink && new URL(iconLink.getAttribute('href'), location.href).origin === location.origin,
+					'The application must load Codicons locally');
+				var fonts = await document.fonts.load('16px codicon');
+				assert(fonts.length && fonts.every(function (font) { return font.status === 'loaded'; }),
+					'The local Codicon font must load');
+				var icons = ['calendar', 'edit', 'settings-gear', 'debug-start', 'arrow-left', 'arrow-right',
+					'debug-stop', 'link-external', 'person-voice', 'flag', 'history', 'error', 'warning', 'pass-filled'];
+				icons.forEach(function (name) {
+					var icon = document.createElement('span');
+					icon.className = 'codicon codicon-' + name;
+					document.body.appendChild(icon);
+					var content = getComputedStyle(icon, '::before').content;
+					icon.remove();
+					assert(content !== 'none' && content !== 'normal', name + ': missing Codicon glyph');
+				});
+				var checkedBox = document.createElement('input');
+				checkedBox.type = 'checkbox';
+				checkedBox.className = 'monaco-checkbox';
+				checkedBox.checked = true;
+				document.body.appendChild(checkedBox);
+				var checkmark = getComputedStyle(checkedBox, '::before');
+				assert(checkmark.fontFamily.indexOf('codicon') !== -1 && checkmark.content !== 'none',
+					'Checked demo boxes must use the local icon font');
+				checkedBox.remove();
+
+				var targets = [
+					{ name: 'leading edge', index: 1, find: function (row) { return at(row, 0.005); } },
+					{ name: 'empty space', index: 1, find: function (row) { return at(row, 0.5); } },
+					{ name: 'avatar', index: 1, find: function (row) { return row.querySelector('.avatar'); } },
+					{ name: 'speaker name', index: 1, find: function (row) { return row.querySelector('.speaker-name'); } },
+					{ name: 'demo tag', index: 1, find: function (row) { return row.querySelector('.demo-tag'); } },
+					{ name: 'average time', index: 1, find: function (row) { return row.querySelector('.average'); } },
+					{ name: 'status', index: 1, find: function (row) { return row.querySelector('.status'); } },
+					{ name: 'trailing edge', index: 1, find: function (row) { return at(row, 0.995); } },
+					{ name: 'stage icon', index: 3, find: function (row) { return row.querySelector('.codicon-flag'); } }
+				];
+
+				targets.forEach(function (test) {
+					var stage = reset(0);
+					var row = document.querySelectorAll('#stage .list-row')[test.index];
+					var target = test.find(row);
+					assert(target, test.name + ': missing click target');
+					target.click();
+					assert(stage.current === test.index, test.name + ': wrong selected speaker');
+					assert(emitted.length === 1 && emitted[0].event === 'goto' && emitted[0].value === test.index,
+						test.name + ': expected one selection event');
+					assert(document.querySelector('#stage .list-row.active').getAttribute('aria-current') === 'true',
+						test.name + ': selected row must remain current');
+				});
+
+				var stage = reset(0);
+				var active = document.querySelector('#stage .list-row.active');
+				active.click();
+				assert(stage.current === 0 && emitted.length === 0, 'Selecting the current row must do nothing');
+
+				var row = document.querySelectorAll('#stage .list-row')[1];
+				var button = row.querySelector('.speaker-name');
+				assert(button && button.tagName === 'BUTTON' && button.type === 'button' && button.tabIndex === 0,
+					'Each selectable name must be a keyboard-accessible button');
+				assert(row.querySelector('.average').getAttribute('title') === 'Average speaking time',
+					'Timing details must keep their tooltip');
+				assert(getComputedStyle(row).cursor === 'pointer', 'Selectable rows must show the pointer cursor');
+				button.focus();
+				assert(document.activeElement === button && getComputedStyle(row).outlineStyle !== 'none',
+					'Keyboard focus must be visible on the row');
+
+				stage = reset(-1);
+				row = document.querySelectorAll('#stage .list-row')[1];
+				var checkbox = row.querySelector('.monaco-checkbox');
+				assert(checkbox && checkbox.checked, 'The demo checkbox must retain its selection');
+				checkbox.click();
+				assert(!checkbox.checked && !stage.order[1].discussionSlot, 'The demo checkbox must toggle normally');
+				assert(emitted.length === 1 && emitted[0].event === 'toggleDiscussionSlot' && emitted[0].value === 1,
+					'The checkbox must emit only its own event');
+				row.click();
+				assert(stage.current === -1 && emitted.length === 1, 'Idle rows must not select a speaker');
+
+				var panel = document.querySelector('.panel');
+				[288, 148].forEach(function (width) {
+					[true, false].forEach(function (active) {
+						panel.style.width = width + 'px';
+						var now = Date.now();
+						var name = 'Christof "CJ" <&> O\'Brien';
+						var speaker = { name: name, discussionSlot: true, startTime: now - 6000 };
+						if (!active) {
+							speaker.stopTime = now - 3000;
+						}
+						var stats = {};
+						stats[name] = { standupCount: 1, speakTime: 65000 };
+						socketHandlers.sync({
+							stage: {
+								current: active ? 1 : 0,
+								order: [{ name: 'Team Leads', startTime: now }, speaker]
+							},
+							stats: stats,
+							time: now
+						});
+						var speakerRow = document.querySelectorAll('.list-row')[1];
+						var heading = speakerRow.querySelector('h4');
+						var avatar = document.createElement('img');
+						avatar.className = 'avatar';
+						avatar.alt = '';
+						heading.prepend(avatar);
+						var label = heading.querySelector(active ? '.speaker-label' : '.speaker-name');
+						var headingRect = heading.getBoundingClientRect();
+						var tagRect = heading.querySelector('.demo-tag').getBoundingClientRect();
+						var statsRect = speakerRow.querySelector('.stats').getBoundingClientRect();
+						var rowRect = speakerRow.getBoundingClientRect();
+						assert(label.textContent === name && label.title === name,
+							'The full speaker name must remain available, including special characters');
+						assert(tagRect.right <= headingRect.right + 0.5, width + ': demo tag must stay within the heading');
+						assert(headingRect.right <= statsRect.left + 0.5 || headingRect.bottom <= statsRect.top + 0.5,
+							width + ': speaker details must not overlap timing');
+						assert(statsRect.right <= rowRect.right + 0.5, width + ': timing must stay within the row');
+					});
+				});
+				return targets.length;
+			});
+
+			window.speakerSelectionTests.then(function (count) {
+				document.getElementById('result').textContent = count + ' speaker selection targets passed.';
+			}, function (error) {
+				document.getElementById('result').textContent = 'Speaker selection tests failed: ' + error.message;
+				console.error(error);
+			});
+		})();
+	</script>
+</body>
+</html>

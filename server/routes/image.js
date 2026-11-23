@@ -25,11 +25,13 @@ exports.route = function(req, res) {
         var data = JSON.parse(str);
         var url = data.images[0].url;
         var label = data.images[0].copyright;
+        var sourceUrl = data.images[0].copyrightlink;
         
         res.writeHead(200, {"Content-Type": "application/json"});
         res.end(JSON.stringify({
           url: 'http://www.bing.com' + url,
-          label: label
+          label: label,
+          sourceUrl: sourceUrl
         }));
       } catch (error) {
         res.writeHead(200, {"Content-Type": "application/json"});

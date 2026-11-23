@@ -1,0 +1,7 @@
+Codicons 0.0.46-36
+Copyright Microsoft Corporation and contributors.
+Source: https://github.com/microsoft/vscode-codicons
+
+The icon font is licensed under CC BY 4.0 (see LICENSE).
+The stylesheet is licensed under the MIT License (see LICENSE-CODE).
+The bundled files are unmodified.
