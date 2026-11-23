@@ -93,7 +93,6 @@ exports.start = function (callback) {
 
 			stage.order = [teamLeadSlot];;
 			discussionSlot.forEach(function (element) {
-				delete element.discussionSlot;
 				stage.order.push(element);
 			});
 			statusSlot.forEach(function (element) {

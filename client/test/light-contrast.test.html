@@ -1,0 +1,242 @@
+<!doctype html>
+<html lang="en" data-theme="light">
+<head>
+	<meta charset="utf-8">
+	<title>Light theme contrast tests</title>
+	<link rel="stylesheet" href="../style.css">
+</head>
+<body>
+	<output id="result">Running light theme contrast tests...</output>
+	<header class="titlebar floating-surface">
+		<div class="titlebar-left"><span class="titlebar-title">Date</span></div>
+		<div class="titlebar-right">
+			<button class="action-item" type="button" aria-label="Appearance"></button>
+			<div class="settings-popover" hidden>
+				<label class="setting-label">Transparency <output>60%</output></label>
+				<div class="segmented-control">
+					<label><input type="radio" checked><span>Light</span></label>
+				</div>
+			</div>
+		</div>
+	</header>
+	<main class="panel floating-surface">
+		<div class="toolbar">
+			<button id="start" type="button" class="monaco-button">Start</button>
+			<button id="disabled-start" type="button" class="monaco-button" disabled>Start</button>
+			<button id="action" type="button" class="action-item" aria-label="Next"></button>
+			<button id="stop" type="button" class="action-item stop" aria-label="Stop"></button>
+		</div>
+		<div id="stage">
+			<div id="normal" class="list-row selectable">
+				<h4><button type="button" class="speaker-name">Speaker</button><span class="demo-tag">demo</span></h4>
+			</div>
+			<div id="spoken" class="list-row spoken selectable">
+				<h4><button type="button" class="speaker-name">Spoken</button></h4>
+				<span class="stats">
+					<span class="average">00:45</span>
+					<span class="status-ok"></span><span class="status-warning"></span><span class="status-error"></span>
+					<span class="badge">01:00</span>
+				</span>
+			</div>
+			<div id="active" class="list-row active">
+				<h4>Current</h4><span class="stats"><span class="average">00:45</span></span>
+			</div>
+			<div id="overtime" class="list-row active over-time" style="animation: none">
+				<h4>Over time</h4><span class="stats"><span class="average">00:45</span></span>
+			</div>
+			<div class="list-row">
+				<input class="monaco-checkbox" type="checkbox" checked aria-label="Demo">
+				<h4>Idle speaker</h4>
+			</div>
+		</div>
+	</main>
+	<footer class="image-footer floating-surface">
+		<span class="image-credit">Image credit</span><a href="#" class="image-source">Source</a>
+	</footer>
+	<script>
+		window.lightContrastTests = Promise.resolve().then(function () {
+			if (!document.querySelector('link').sheet) {
+				throw new Error('Failed to load the application stylesheet');
+			}
+
+			var root = document.documentElement;
+			var panel = document.querySelector('.panel');
+			var sample = document.createElement('canvas');
+			var sampleContext = sample.getContext('2d');
+			sample.width = sample.height = 1;
+			var backdrop = document.createElement('canvas');
+			var filtered = document.createElement('canvas');
+			backdrop.width = backdrop.height = filtered.width = filtered.height = 160;
+			var backdropContext = backdrop.getContext('2d');
+			var filteredContext = filtered.getContext('2d');
+			var minima = {};
+			var scenario;
+
+			function pixel(context, x, y) {
+				return Array.from(context.getImageData(x, y, 1, 1).data).slice(0, 3);
+			}
+
+			function composite(background, color) {
+				sampleContext.clearRect(0, 0, 1, 1);
+				sampleContext.fillStyle = 'rgb(' + background.join(',') + ')';
+				sampleContext.fillRect(0, 0, 1, 1);
+				sampleContext.fillStyle = color;
+				sampleContext.fillRect(0, 0, 1, 1);
+				return pixel(sampleContext, 0, 0);
+			}
+
+			function rgb(color) {
+				return composite([0, 0, 0], color);
+			}
+
+			function blend(foreground, background, opacity) {
+				return foreground.map(function (channel, i) {
+					return Math.round(channel * opacity + background[i] * (1 - opacity));
+				});
+			}
+
+			function luminance(color) {
+				var channels = color.map(function (channel) {
+					channel /= 255;
+					return channel <= 0.04045 ? channel / 12.92 : Math.pow((channel + 0.055) / 1.055, 2.4);
+				});
+				return 0.2126 * channels[0] + 0.7152 * channels[1] + 0.0722 * channels[2];
+			}
+
+			function contrast(name, foreground, background, threshold) {
+				var a = luminance(foreground);
+				var b = luminance(background);
+				var ratio = (Math.max(a, b) + 0.05) / (Math.min(a, b) + 0.05);
+				if (!minima[name] || ratio < minima[name].ratio) {
+					minima[name] = { ratio: ratio, threshold: threshold, scenario: scenario };
+				}
+			}
+
+			function style(selector, pseudo) {
+				var element = document.querySelector(selector);
+				if (!element) {
+					throw new Error('Missing contrast target: ' + selector);
+				}
+				return getComputedStyle(element, pseudo || null);
+			}
+
+			function surface(background) {
+				var panelStyle = getComputedStyle(panel);
+				backdropContext.fillStyle = background;
+				backdropContext.fillRect(0, 0, 160, 160);
+				filteredContext.clearRect(0, 0, 160, 160);
+				filteredContext.filter = panelStyle.backdropFilter;
+				filteredContext.drawImage(backdrop, 0, 0);
+				filteredContext.filter = 'none';
+				filteredContext.fillStyle = panelStyle.backgroundColor;
+				filteredContext.fillRect(0, 0, 160, 160);
+				return pixel(filteredContext, 80, 80);
+			}
+
+			function text(name, selector, background, threshold) {
+				contrast(name, rgb(style(selector).color), background, threshold);
+			}
+
+			function buttonText(name, selector, background) {
+				var button = style(selector);
+				var opacity = Number(button.opacity);
+				var buttonBackground = composite(background, button.backgroundColor);
+				contrast(name, blend(rgb(button.color), background, opacity),
+					blend(buttonBackground, background, opacity), 4.5);
+			}
+
+			document.querySelector('#normal .speaker-name').focus();
+			if (style('#normal').outlineStyle === 'none') {
+				throw new Error('Focused rows must have an outline');
+			}
+
+			var backgrounds = ['#000000', '#ff0000', '#00ff00', '#0000ff', '#ffffff'];
+			var tints = [null, '#000000', '#ff0000', '#00ff00', '#0000ff'];
+			var opacities = [0.4, 0.75, 1];
+			var forcedColors = matchMedia('(forced-colors: active)').matches;
+			if (forcedColors && style('#start').outlineStyle === 'none') {
+				throw new Error('The start button must have a visible forced-colors outline');
+			}
+			opacities.forEach(function (opacity) {
+				root.style.setProperty('--panel-opacity', String(opacity));
+				tints.forEach(function (tint) {
+					if (tint) {
+						root.setAttribute('data-tint', 'on');
+						root.style.setProperty('--ui-tint-color', tint);
+					} else {
+						root.removeAttribute('data-tint');
+					}
+					backgrounds.forEach(function (background) {
+						scenario = { opacity: opacity, tint: tint, backdrop: background };
+						var glass = surface(background);
+						var active = composite(glass, style('#active').backgroundColor);
+						var overtime = composite(glass, style('#overtime').backgroundColor);
+						var badge = composite(glass, style('.badge').backgroundColor);
+						var demo = composite(glass, style('.demo-tag').backgroundColor);
+						var start = composite(glass, style('#start').backgroundColor);
+						var checkbox = composite(glass, style('.monaco-checkbox').backgroundColor);
+						var popover = composite(glass, style('.settings-popover').backgroundColor);
+						var segment = composite(popover, style('.segmented-control input:checked + span').backgroundColor);
+
+						text('Date', '.titlebar-title', glass, 4.5);
+						text('Speaker name', '#normal .speaker-name', glass, 4.5);
+						text('Spoken name', '#spoken .speaker-name', glass, 4.5);
+						text('Average time', '#spoken .average', glass, 4.5);
+						text('Image credit', '.image-credit', glass, 4.5);
+						text('Image source', '.image-source', glass, 4.5);
+						text('Toolbar icon', '#action', glass, 3);
+						text('Stop icon', '#stop', glass, 3);
+						text('On-time icon', '.status-ok', glass, 3);
+						text('Warning icon', '.status-warning', glass, 3);
+						text('Over-time icon', '.status-error', glass, 3);
+						contrast('Focus outline', rgb(style('#normal').outlineColor), glass, 3);
+						var startBoundary = forcedColors ? rgb(style('#start').outlineColor) : start;
+						contrast('Start button boundary', startBoundary, glass, 3);
+						buttonText('Start button text', '#start', glass);
+						buttonText('Disabled start text', '#disabled-start', glass);
+						text('Demo tag', '.demo-tag', demo, 4.5);
+						text('Time badge', '.badge', badge, 4.5);
+						text('Current speaker', '#active h4', active, 4.5);
+						text('Current average', '#active .average', active, 4.5);
+						text('Over-time speaker', '#overtime h4', overtime, 4.5);
+						text('Over-time average', '#overtime .average', overtime, 4.5);
+						contrast('Current indicator', rgb(style('#active', '::before').backgroundColor), active, 3);
+						contrast('Over-time indicator', rgb(style('#overtime', '::before').backgroundColor), overtime, 3);
+						contrast('Checkbox border', rgb(style('.monaco-checkbox').borderColor), checkbox, 3);
+						text('Settings label', '.setting-label', popover, 4.5);
+						text('Settings value', '.setting-label output', popover, 4.5);
+						text('Selected theme', '.segmented-control input:checked + span', segment, 4.5);
+
+						if (!forcedColors) {
+							var thumb = composite(glass, style('#stage', '::-webkit-scrollbar-thumb').backgroundColor);
+							contrast('Scrollbar thumb', thumb, glass, 3);
+						}
+					});
+				});
+			});
+
+			var failures = Object.keys(minima).filter(function (name) {
+				return minima[name].ratio < minima[name].threshold;
+			}).map(function (name) {
+				var result = minima[name];
+				return name + ': ' + result.ratio.toFixed(2) + ':1 (minimum ' + result.threshold + ':1, ' +
+					JSON.stringify(result.scenario) + ')';
+			});
+			if (failures.length) {
+				throw new Error(failures.join('; '));
+			}
+			return {
+				scenarios: opacities.length * tints.length * backgrounds.length,
+				minima: minima
+			};
+		});
+
+		window.lightContrastTests.then(function (results) {
+			document.getElementById('result').textContent = results.scenarios + ' light theme contrast scenarios passed.';
+		}, function (error) {
+			document.getElementById('result').textContent = 'Light theme contrast tests failed: ' + error.message;
+			console.error(error);
+		});
+	</script>
+</body>
+</html>

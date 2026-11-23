@@ -8,14 +8,13 @@
 
   <title>Monaco Standup Page</title>
 
-  <!-- Bootstrap -->
-  <link href="lib/bootstrap/css/bootstrap.min.css" rel="stylesheet">
+  <meta name="color-scheme" content="dark light">
+
+  <link href="lib/codicons/codicon.css" rel="stylesheet">
   <script src="lib/jquery/jquery-1.11.0.min.js"></script>
-  <script src="lib/bootstrap/js/bootstrap.min.js"></script>
-  <script src="lib/bootstrap/js/docs.min.js"></script>
-  <script src="https://cdn.jsdelivr.net/npm/canvas-confetti@1.9.2/dist/confetti.browser.min.js"></script>
 
   <link href="style.css" rel="stylesheet">
+  <script src="appearance.js"></script>
 
   <!-- Socket.io -->
   <script src="/socket.io/socket.io.js"></script>
@@ -77,18 +76,16 @@
       }).done(function (data) {
         if (data && data.url) {
           var url = data.url;
-          var label = data.label;
-          if (label && label.indexOf('(') > 0) {
-            label = label.substr(0, label.indexOf('('));
-          }
 
           $(document.body).css({
             backgroundImage: 'url(' + url + ')'
           });
-
-          // Label
-          $('#navlabel').html(label);
+          StandupAppearance.setBackgroundImage(url, data.label, data.sourceUrl);
+        } else {
+          console.error('Background image metadata is unavailable');
         }
+      }).fail(function () {
+        console.error('Unable to load background image metadata');
       });
     });
   </script>
@@ -96,85 +93,76 @@
 
 <body>
 
-  <!-- Navbar
+  <!-- Title Bar
     ================================================== -->
-  <nav class="navbar navbar-default" role="navigation">
-    <div class="container-fluid">
-
-      <!-- Brand and toggle get grouped for better mobile display -->
-      <div class="navbar-header">
-        <button type="button" class="navbar-toggle" data-toggle="collapse" data-target="#bs-example-navbar-collapse-1">
-          <span class="sr-only">Toggle navigation</span>
-        </button>
-        <span class="navbar-brand" id="navdate"></span>
-        <span class="navbar-text" id="navlabel"></span>
-      </div>
-
-      <!-- Collect the nav links, forms, and other content for toggling -->
-      <div class="collapse navbar-collapse" id="bs-example-navbar-collapse-1">
-        <ul class="nav navbar-nav navbar-right">
-          <li><a href="https://stand.scm.azurewebsites.net/dev/wwwroot/config.js" target="_blank">Edit</a></li>
-        </ul>
+  <header class="titlebar floating-surface">
+    <div class="titlebar-left">
+      <span class="codicon codicon-calendar" aria-hidden="true"></span>
+      <span class="titlebar-title" id="navdate"></span>
+    </div>
+    <div class="titlebar-right">
+      <a class="action-item" href="https://stand.scm.azurewebsites.net/dev/wwwroot/config.js" target="_blank"
+        title="Edit Configuration" aria-label="Edit Configuration"><span class="codicon codicon-edit"
+          aria-hidden="true"></span></a>
+      <button type="button" class="action-item" id="appearance-toggle" title="Appearance" aria-label="Appearance"
+        aria-haspopup="dialog" aria-expanded="false" aria-controls="appearance-popover">
+        <span class="codicon codicon-settings-gear" aria-hidden="true"></span>
+      </button>
+      <div class="settings-popover" id="appearance-popover" role="dialog" aria-label="Appearance" hidden>
+        <fieldset class="setting">
+          <legend class="setting-label">Theme</legend>
+          <div class="segmented-control">
+            <label><input type="radio" name="theme" value="light"><span>Light</span></label>
+            <label><input type="radio" name="theme" value="dark"><span>Dark</span></label>
+            <label><input type="radio" name="theme" value="system"><span>System</span></label>
+          </div>
+        </fieldset>
+        <div class="setting">
+          <label class="setting-label" for="appearance-transparency">
+            <span>Panel transparency</span>
+            <output id="appearance-transparency-value" for="appearance-transparency"></output>
+          </label>
+          <input type="range" class="monaco-slider" id="appearance-transparency" min="0" max="60" step="5">
+        </div>
+        <label class="setting setting-checkbox">
+          <input type="checkbox" class="monaco-checkbox" id="appearance-tint">
+          <span>Tint with background image colors</span>
+        </label>
       </div>
     </div>
-  </nav>
+  </header>
 
   <!-- List of Stage
     ================================================== -->
-  <div class="container">
-    <div class="list-group">
-      <span class="list-group-item list-group-item-transparent controls">
-        <div class="btn-group btn-group-justified">
-          <div class="btn-group">
-            <button type="button" class="btn btn-primary" id="start"><span
-                class="glyphicon glyphicon-play"></span></button>
-          </div>
-          <div class="btn-group">
-            <button type="button" class="btn btn-primary" id="previous"><span
-                class="glyphicon glyphicon-backward"></span></button>
-          </div>
-          <div class="btn-group">
-            <button type="button" class="btn btn-primary" id="next"><span
-                class="glyphicon glyphicon-forward"></span></button>
-          </div>
-          <div class="btn-group">
-            <button type="button" class="btn btn-primary" id="stop"><span
-                class="glyphicon glyphicon-stop"></span></button>
-          </div>
-          <div class="btn-group">
-            <button type="button" class="btn btn-primary" id="music"><span
-                class="glyphicon glyphicon-music"></span></button>
-          </div>
-          <div class="btn-group">
-            <button type="button" class="btn btn-primary" id="confetti">🎉</button>
-          </div>
-        </div>
-      </span>
-      <span id="stage"></span>
-    </div>
-  </div>
-
-  <!-- Recording Alert (currently not being used)
-    ================================================== -->
-  <div class="modal fade" id="recordingAlert" tabindex="-1" role="dialog" aria-hidden="true">
-    <div class="modal-dialog">
-      <div class="modal-content">
-        <div class="modal-body">
-          <h4>Please start recording!</h4>
-        </div>
-        <div class="modal-footer">
-          <button type="button" class="btn btn-default" data-dismiss="modal">Ok</button>
+  <main class="panel floating-surface">
+    <div class="toolbar" role="toolbar" aria-label="Standup Controls">
+      <div class="toolbar-controls">
+        <button type="button" class="monaco-button" id="start" title="Start Standup">
+          <span class="codicon codicon-debug-start" aria-hidden="true"></span><span>Start</span>
+        </button>
+        <div class="actions">
+          <button type="button" class="action-item" id="previous" title="Previous Speaker" aria-label="Previous Speaker">
+            <span class="codicon codicon-arrow-left" aria-hidden="true"></span>
+          </button>
+          <button type="button" class="action-item" id="next" title="Next Speaker" aria-label="Next Speaker">
+            <span class="codicon codicon-arrow-right" aria-hidden="true"></span>
+          </button>
+          <button type="button" class="action-item stop" id="stop" title="Stop Standup" aria-label="Stop Standup">
+            <span class="codicon codicon-debug-stop" aria-hidden="true"></span>
+          </button>
         </div>
       </div>
+      <span class="blobby"><img id="blobby" src="/blobby/setup.png" width="28" height="28" alt=""></span>
     </div>
-  </div>
+    <div id="stage" class="monaco-list" role="list" aria-label="Speakers"></div>
+  </main>
 
-  <!-- Monaco Theme
-    ================================================== -->
-  <audio>
-    <source src="monaco.mp3">
-    </source>
-  </audio>
+  <footer class="image-footer floating-surface" id="image-footer" aria-label="Background image" hidden>
+    <span class="image-credit" id="image-credit"></span>
+    <a class="image-source" id="image-source" target="_blank" rel="noopener noreferrer">
+      Source <span class="codicon codicon-link-external" aria-hidden="true"></span>
+    </a>
+  </footer>
 
 </body>
 

@@ -1,0 +1,237 @@
+<!doctype html>
+<html lang="en">
+<head>
+	<meta charset="utf-8">
+	<title>Panel layout tests</title>
+</head>
+<body>
+	<output id="result">Running panel layout tests...</output>
+	<script>
+		var fixture = document.createElement('iframe');
+		fixture.style.cssText = 'position: fixed; left: -10000px; top: -10000px; border: 0; visibility: hidden';
+		fixture.srcdoc = '<!doctype html><link rel="stylesheet" href="../style.css">' +
+			'<header class="titlebar floating-surface"><div class="titlebar-left"><span class="titlebar-title">' +
+			'Monday, 23rd November 2026</span></div><div class="titlebar-right">' +
+			'<button class="action-item" aria-label="Edit"></button><button class="action-item" aria-label="Appearance"></button></div></header>' +
+			'<main class="panel floating-surface"><div class="toolbar"><div class="toolbar-controls"><button class="monaco-button">Start</button>' +
+			'<div class="actions"><button class="action-item" aria-label="Previous"></button>' +
+			'<button class="action-item" aria-label="Next"></button><button class="action-item" aria-label="Stop"></button></div>' +
+			'</div><span class="blobby"><img id="blobby" src="../blobby/setup.png" width="28" height="28" alt=""></span></div><div id="stage"></div></main>' +
+			'<footer class="image-footer floating-surface"><span class="image-credit">' +
+			'Fiddlehead fern (Photo credit / Image provider)</span><a class="image-source" href="https://www.bing.com/">Source</a></footer>' +
+			'<script src="../lib/jquery/jquery-1.11.0.min.js"><\/script>' +
+			'<script>window.define = function (dependencies, factory) {' +
+			'factory({ connect: function () { return { on: function () {}, emit: function () {} }; } }); };<\/script>' +
+			'<script src="../main.js"><\/script>';
+
+		window.panelLayoutTests = new Promise(function (resolve, reject) {
+			fixture.onload = async function () {
+				try {
+					var doc = fixture.contentDocument;
+					if (!doc.querySelector('link').sheet) {
+						throw new Error('Failed to load the application stylesheet');
+					}
+
+					var stage = doc.getElementById('stage');
+					var panel = doc.querySelector('.panel');
+					var toolbar = doc.querySelector('.toolbar');
+					var header = doc.querySelector('.titlebar');
+					var footer = doc.querySelector('.image-footer');
+					var cases = [
+						{ width: 800, height: 900, rows: 0, scrolls: false },
+						{ width: 800, height: 900, rows: 1, scrolls: false },
+						{ width: 800, height: 1000, rows: 19, scrolls: false },
+						{ width: 800, height: 600, rows: 40, scrolls: true },
+						{ width: 320, height: 280, rows: 18, scrolls: true },
+						{ width: 180, height: 350, rows: 1, scrolls: false }
+					];
+
+					cases.forEach(function (scenario) {
+						fixture.style.width = scenario.width + 'px';
+						fixture.style.height = scenario.height + 'px';
+						stage.replaceChildren();
+						for (var i = 0; i < scenario.rows; i++) {
+							var row = doc.createElement('div');
+							row.className = 'list-row';
+							row.textContent = 'Speaker ' + i;
+							stage.appendChild(row);
+						}
+
+						var panelRect = panel.getBoundingClientRect();
+						var toolbarRect = toolbar.getBoundingClientRect();
+						var blobbyRect = toolbar.querySelector('.blobby').getBoundingClientRect();
+						var stageRect = stage.getBoundingClientRect();
+						var headerRect = header.getBoundingClientRect();
+						var footerRect = footer.getBoundingClientRect();
+						var scrolls = stage.scrollHeight > stage.clientHeight;
+						if (headerRect.top < 15 || footerRect.bottom > scenario.height - 15 ||
+							headerRect.bottom >= panelRect.top || panelRect.bottom >= footerRect.top ||
+							headerRect.left !== panelRect.left || footerRect.left !== panelRect.left ||
+							headerRect.width !== panelRect.width || footerRect.width !== panelRect.width) {
+							throw new Error('Header, list, and footer must be separate, aligned floating surfaces: ' + JSON.stringify(scenario));
+						}
+						if (doc.documentElement.scrollWidth > scenario.width || footer.scrollWidth > footer.clientWidth) {
+							throw new Error('Floating surfaces must not overflow horizontally: ' + JSON.stringify(scenario));
+						}
+						if (!/^rgba\([^)]*,\s*0\)$/.test(fixture.contentWindow.getComputedStyle(toolbar).backgroundColor)) {
+							throw new Error('Controls area must have no background fill');
+						}
+						if (Math.abs(toolbarRect.left - stageRect.left) > 0.5 ||
+							Math.abs(toolbarRect.right - stageRect.right) > 0.5) {
+							throw new Error('Controls must span the panel width: ' + JSON.stringify(scenario));
+						}
+						if (stageRect.width < panelRect.width - 2.5) {
+							throw new Error('Speaker list must retain the panel width: ' + JSON.stringify(scenario));
+						}
+						if (blobbyRect.left < toolbarRect.left || blobbyRect.right > toolbarRect.right ||
+							Math.abs(toolbarRect.top + (toolbarRect.height - 1) / 2 - (blobbyRect.top + blobbyRect.height / 2)) > 0.5) {
+							throw new Error('Blobby must stay at the right of the toolbar: ' + JSON.stringify(scenario));
+						}
+						Array.from(toolbar.querySelectorAll('button')).forEach(function (button) {
+							var buttonRect = button.getBoundingClientRect();
+							if (buttonRect.left < toolbarRect.left || buttonRect.right > blobbyRect.left ||
+								buttonRect.top < toolbarRect.top || buttonRect.bottom > toolbarRect.bottom) {
+								throw new Error('Toolbar controls must remain visible: ' + JSON.stringify(scenario));
+							}
+						});
+						if (scrolls !== scenario.scrolls || panelRect.bottom > scenario.height - 15) {
+							throw new Error('Incorrect scrolling or viewport fit: ' + JSON.stringify(scenario));
+						}
+						if (!scrolls && scenario.rows && panelRect.bottom - stage.lastElementChild.getBoundingClientRect().bottom > 10) {
+							throw new Error('Unexpected empty space below the list: ' + JSON.stringify(scenario));
+						}
+						if (!scenario.rows && stage.clientHeight > 10) {
+							throw new Error('Empty list has unexpected height');
+						}
+						if (scrolls) {
+							stage.scrollTop = stage.scrollHeight;
+							if (!stage.scrollTop || stage.lastElementChild.getBoundingClientRect().bottom > stage.getBoundingClientRect().bottom) {
+								throw new Error('Last row is not reachable: ' + JSON.stringify(scenario));
+							}
+						}
+					});
+
+					fixture.style.width = '800px';
+					fixture.style.height = '900px';
+					[false, true].forEach(function (idle) {
+						[false, true].forEach(function (active) {
+							if (idle && active) {
+								return;
+							}
+							var names = ['Team Leads', 'Speaker', 'Endgame'];
+							var icons = ['person-voice', '', 'flag'];
+							stage.innerHTML = names.map(function (name, index) {
+								var checkbox = idle
+									? (index === 0 ? '<span class="checkbox-placeholder"></span>' : '<input class="monaco-checkbox" type="checkbox">')
+									: '';
+								var leading = icons[index]
+									? '<span class="codicon codicon-' + icons[index] + '" aria-hidden="true"></span>'
+									: '<img class="avatar" alt="">';
+								var label = idle || active ? name : '<button type="button" class="speaker-name">' + name + '</button>';
+								return '<div class="list-row' + (active ? ' active' : '') + '">' + checkbox +
+									'<h4>' + leading + label + '</h4></div>';
+							}).join('');
+							var positions = Array.from(stage.querySelectorAll('h4')).map(function (heading) {
+								var range = doc.createRange();
+								range.selectNodeContents(heading.querySelector('.speaker-name') || heading.lastChild);
+								return range.getBoundingClientRect().left;
+							});
+							if (positions.some(function (position) { return Math.abs(position - positions[1]) > 0.5; })) {
+								throw new Error('Special-stage labels must align with speaker names: ' + JSON.stringify({ idle: idle, active: active, positions: positions }));
+							}
+						});
+					});
+
+					doc.documentElement.setAttribute('data-theme', 'light');
+					if (!fixture.contentWindow.matchMedia('(forced-colors: active)').matches) {
+						var canvas = doc.createElement('canvas');
+						canvas.width = canvas.height = 1;
+						var context = canvas.getContext('2d');
+						context.fillStyle = 'rgb(192, 192, 192)';
+						context.fillRect(0, 0, 1, 1);
+						context.fillStyle = fixture.contentWindow.getComputedStyle(panel).borderTopColor;
+						context.fillRect(0, 0, 1, 1);
+						var border = context.getImageData(0, 0, 1, 1).data;
+						if (border[0] > 192 || border[1] > 192 || border[2] > 192) {
+							throw new Error('Light-theme borders must not brighten a neutral background');
+						}
+					}
+
+					var blobby = toolbar.querySelector('.blobby');
+					var image = blobby.querySelector('img');
+					var poses = ['speaking', 'setup', 'demo', 'warning', 'overtime', 'endgame'];
+					var layouts = [
+						{ width: 180, height: 350, extraRows: 0, scrolls: true },
+						{ width: 180, height: 900, extraRows: 0, scrolls: false },
+						{ width: 800, height: 900, extraRows: 0, scrolls: false },
+						{ width: 800, height: 600, extraRows: 39, scrolls: true }
+					];
+					var referenceScale;
+					for (var layoutIndex = 0; layoutIndex < layouts.length; layoutIndex++) {
+						var layout = layouts[layoutIndex];
+						fixture.style.width = layout.width + 'px';
+						fixture.style.height = layout.height + 'px';
+						stage.innerHTML = '<div class="list-row active"><h4>Speaker</h4>' +
+							'<span class="stats"><span class="status"><span class="badge">00:18</span></span></span></div>' +
+							'<div class="list-row">Speaker</div>'.repeat(layout.extraRows);
+						await new Promise(function (resolve) {
+							requestAnimationFrame(function () { requestAnimationFrame(resolve); });
+						});
+						var slotBounds = blobby.getBoundingClientRect();
+						var toolbarBounds = toolbar.getBoundingClientRect();
+						var badgeBounds = stage.querySelector('.badge').getBoundingClientRect();
+						if (Math.abs(slotBounds.right - badgeBounds.right) > 0.5) {
+							throw new Error('Blobby must align with the timer edge: ' +
+								JSON.stringify({ layout: layout, difference: slotBounds.right - badgeBounds.right }));
+						}
+						if ((stage.scrollHeight > stage.clientHeight) !== layout.scrolls) {
+							throw new Error('Unexpected scrolling in Blobby alignment test: ' + JSON.stringify(layout));
+						}
+						for (var poseIndex = 0; poseIndex < poses.length; poseIndex++) {
+							var pose = poses[poseIndex];
+							image.src = '../blobby/' + pose + '.png';
+							await image.decode();
+							var imageBounds = image.getBoundingClientRect();
+							var currentSlotBounds = blobby.getBoundingClientRect();
+							var horizontalScale = imageBounds.width / image.naturalWidth;
+							var verticalScale = imageBounds.height / image.naturalHeight;
+							if (referenceScale === undefined) {
+								referenceScale = verticalScale;
+							}
+							if (Math.abs(horizontalScale - verticalScale) > 0.001 ||
+								Math.abs(verticalScale - referenceScale) > 0.001) {
+								throw new Error('Blobby must keep the same undistorted scale in every pose: ' + pose);
+							}
+							if (Math.abs(imageBounds.left - slotBounds.left) > 0.5 ||
+								Math.abs(imageBounds.top - slotBounds.top) > 0.5 ||
+								Math.abs(currentSlotBounds.left - slotBounds.left) > 0.5 ||
+								Math.abs(currentSlotBounds.width - slotBounds.width) > 0.5 ||
+								Math.abs(currentSlotBounds.height - slotBounds.height) > 0.5 ||
+								imageBounds.right > toolbarBounds.right || imageBounds.bottom > toolbarBounds.bottom) {
+								throw new Error('Blobby must stay aligned and fully visible without changing the toolbar layout: ' + pose);
+							}
+						}
+					}
+					resolve(cases.length);
+				} catch (error) {
+					reject(error);
+				} finally {
+					fixture.remove();
+				}
+			};
+			fixture.onerror = function () {
+				fixture.remove();
+				reject(new Error('Failed to load the layout fixture'));
+			};
+			document.body.appendChild(fixture);
+		});
+
+		window.panelLayoutTests.then(function (count) {
+			document.getElementById('result').textContent = count + ' panel layout tests passed.';
+		}, function (error) {
+			document.getElementById('result').textContent = 'Panel layout tests failed: ' + error.message;
+			console.error(error);
+		});
+	</script>
+</body>
+</html>
